@@ -169,12 +169,25 @@ class TabNetEncoder(torch.nn.Module):
         att = self.initial_splitter(x)[:, self.n_d :]
         steps_output = []
         for step in range(self.n_steps):
+            # The sum of all the elements(looked as the weights of features in a step) of a sample (a vector with dimension input_dim, the number of features)  
+            # in matrix M is 1.
+            # Therefore,I think the writer of the paper should have used the other matrix,transformed from M, with some elements equal to 1, 
+            # so as to achieve the goal in the paper,"γ is a relaxation parameter – when γ = 1, a feature is enforced  to be used only at one decision step".
             M = self.att_transformers[step](prior, att)
+               
+            M_copy = M.clone()
+            mask = M_copy > 0
+            M_copy[mask] = 1
+            M_copy[~mask] = 0
             M_loss += torch.mean(
                 torch.sum(torch.mul(M, torch.log(M + self.epsilon)), dim=1)
             )
             # update prior
-            prior = torch.mul(self.gamma - M, prior)
+            
+            # prior = torch.mul(self.gamma - M, prior)
+            # If gamma is 1 and  the element of a sample in M_copy is equal to 1, then the prior will be 0 and the corresponding feature will be enforced  
+            # not to be used in the next decision steps.
+            prior = torch.mul(self.gamma - M_copy, prior)
             # output
             M_feature_level = torch.matmul(M, self.group_attention_matrix)
             masked_x = torch.mul(M_feature_level, x)
